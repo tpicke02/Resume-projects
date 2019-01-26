@@ -1,0 +1,97 @@
+---
+title: "CASE STUDY 11"
+author: "Thomas Pickering"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:  
+    keep_md: true
+    toc: true
+    toc_float: true
+    code_folding: hide
+    fig_height: 6
+    fig_weidth: 12
+    fig_align: 'center'
+---
+
+```{r, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r load_libraries, include=FALSE}
+# Use this R-Chunk to load all your libraries!
+#install.packages("tidyverse") # run this line once in console to get package
+library(tidyverse)
+library(sf)
+library(USAboundaries)
+library(ggrepel)
+library(here)
+library(maps)
+library(stringr)
+library(buildings)
+library(geofacet)
+library(rnaturalearth)
+library(rvest)
+library(viridis)
+library(xml2)
+library(viridisLite)
+library(leaflet)
+library(pander)
+library(ggplot2)
+
+```
+
+```{r load_data}
+# Use this R-Chunk to import all your datasets!
+states <- us_states()
+```
+
+## Background
+
+You have been asked to support a story for the local paper (that has a web presence) that looks back on the housing collapse and the early effects of residential construction. You have data on residential building permits from 1980 through 2010 for each county in the United States. Your colleague that is writing the article would like a map and graphic that highlights the single family building permit patterns across your state as well as the patterns in the US.
+
+```{r tidy_data}
+# Use this R-Chunk to clean & wrangle your data!
+states_contiguous <- states %>%
+  filter(statefp != "72", statefp != "02", statefp != "15")
+
+single.family <- permits %>%
+  group_by(StateAbbr, year) %>% 
+  filter(variable == "Single Family") %>% 
+  summarise(Permits = sum(value)) %>% 
+  filter(year %in% c(2007:2010))
+  
+max_min <- single.family %>%
+  group_by(StateAbbr) %>%
+  summarise(difference = max(Permits) - min(Permits))
+
+diff <- max_min %>% 
+  left_join(states, by = c("StateAbbr" = "stusps"))
+
+diff <- st_as_sf(diff)
+```
+
+## Data Visualization
+
+```{r plot_data}
+# Use this R-Chunk to plot & visualize your data!
+pal <- colorBin("Blues", domain = diff$difference, bins = 8)
+leaflet(data = diff) %>%
+  addTiles() %>%
+  setView(lng = -98.5833333, lat = 39.8333333, zoom = 4) %>% 
+  addPolygons(data = diff,
+    fillColor = ~pal(difference),
+    weight = 1,
+    opacity = 1,
+    dashArray = "3",
+    fillOpacity = 1,
+    color = "black") %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addLegend("bottomright", pal = pal, values = ~difference,
+    title = "Difference in Building Permits",
+    opacity = 1)
+
+```
+
+## Conclusions
+
+The plot shows the difference in building permits between the years 2007 and 2010, which is the time period of the mortgage crisis. The states which had the biggest hits to the number of permits was Texas, then California, Florida, Georgia, and North Carolina. My state of West Virginia wasn't greatly affected.
