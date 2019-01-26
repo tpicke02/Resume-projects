@@ -1,0 +1,189 @@
+---
+title: "Consulting Regression Application"
+output: 
+  html_document:
+    theme: cerulean
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+<style>
+
+</style>
+
+Today we are seeing if there is a relationship between a student's homework grade to his grades on exams and quizzes. This is due to a request from a professor wanting to see the answer to a question she had. That question is if the students are really learning how to do the problems, as they are free to work with others on the homework, but not on quizzes and such. This is why we are thinking that there is no relationship between the two. Our regression model for our data is 
+
+$$
+Y_i = \beta_0 + \beta_1X_1 + \epsilon_i
+$$
+where Y is the student's overall quiz and test score and X is the student's overall homework grade.
+
+```{r, include = FALSE}
+library(mosaic)
+library(MASS)
+library(pander)
+library(car)
+library(lmtest)
+library(alr3)
+moon <- read.csv("moon.csv", header = TRUE)
+```
+
+Below is a scatterplot of our data with a linear regression model drawn in black. The data looks somewhat like it is linear, but there does look like there might be some issue. It definitely looks like there might be some outliers in our data. To see the effect that the potential outliers caused, we ran a robust regression and fitted that regression on the same plot as before.
+
+```{r}
+plot(Y ~ X, data = moon)
+moon.lm <- lm(Y ~ X, data = moon)
+abline(moon.lm)
+
+moon.rlm <- rlm(Y ~ X, data = moon)
+abline(moon.rlm, col = "red")
+
+plot(moon.lm, which = 5)
+```
+
+The plots above definitely confirm the presence of outliers in our data. So now let us see how much weight is put on each data observation.
+
+```{r}
+MAD <- 1/.6745*median(abs(moon.lm$residuals - median(moon.lm$residuals)))
+u = moon.lm$residuals / MAD
+w <- 1.345/abs(u)
+w[abs(u)<=1.345] <- 1
+pander(w)
+```
+
+There are definitely some big outliers in our data as the weights above prove. However, even though they may be outliers, they are still important to keep in as they are real students' grades and do provide some info. Just make sure to keep this in mind in the future, and if you want to put less weight on them in the future, you could do so.
+
+```{r}
+par(mfrow=c(1,2))
+plot(moon.lm, which=1:2)
+```
+
+The QQ plot above shows that our residuals aren't normally distributed, while the residuals vs fitted values plot shows that linearity of the data might actually be an issue, and perhaps equal variance is also question.
+
+```{r}
+moonqq <- qqnorm(moon.lm$residuals)
+qqline(moon.lm$residuals)
+cor(moonqq$x, moonqq$y)
+```
+
+To check normality of our residuals, we need to compare the coefficient of correlation which we got just above and compare it to the critical value that we get from a table in our book.Since our sample is size is 40 and we are controlling our $\alpha$ risk at 0.05, the critical value that corresponds to this is 0.972. Since 0.964 < 0.972, we can conclude that our residuals are not normally distributed, but that is probably due to the left tail on our plot.
+
+```{r}
+pander(bptest(moon.lm, studentize=FALSE))
+pander(pureErrorAnova(moon.lm))
+```
+
+To test if the residuals have constant variance, we ran a Breusch-Pagan test above. To control the risk at 0.05, we need $\chi^2$(.95;1) = 3.84. And since 10.38 > 3.84, we can conclude that there are unequal error variances. To fix this, we might want to transform our data to make it more linear and then fit a regression on that. The fact that a linear regression isn't appropriate is also confirmed by our lack of fit test we performed above as well.
+
+```{r}
+boxCox(moon.lm, lambda = seq(-2,4))
+moon.square <- lm((Y)^2 ~ X, data = moon)
+pander(summary(moon.square))
+plot(moon.square, which=1:2)
+```
+
+From the plots and summary above, as well as some trial and error we did, we see that probably the best transformation to perform on our data would be to square our response variable, the students' exam and quiz grade. Now let's go back and check some of the concerns we had before.
+
+```{r}
+pander(bptest(moon.square, studentize=FALSE))
+moonqq <- qqnorm(moon.square$residuals)
+qqline(moon.square$residuals)
+cor(moonqq$x, moonqq$y)
+```
+
+We can now say that there are constant variances, since our new test statistic (1.61) is less than 3.84. Also, since our new coefficient of correlation (.977) we calculated is larger than our critical value (.972), we can conclude that our residuals are now normally distributed.
+
+```{r}
+plot(I(Y)^2 ~ X, data = moon)
+abline(moon.square)
+
+b <- coef(moon.square)
+plot(Y ~ X, data = moon)
+curve(sqrt(b[1] + b[2]*x), add = TRUE)
+```
+
+Above we can see the plot where we add a regression line to our transformed data, and then right after that is the plot where we bring back the Y to "reality" and we can see the curve that fits our data.
+
+Finally, our new model for predicting the test scores of students dependent upon their homework score is
+
+$$
+Y_i = \sqrt{-1732.29 + 99.23X + \epsilon_i}
+$$
+With our new model, we can now better predict a student's overall grade for tests and quizzes. For example, we can predict the average grade for students who have roughly an 80 on their homework to be roughly between 75.53 and 81.9 with a mean grade of 78.78. In terms of where we can expect a single student's test score to be at the same place, we get that it can lie anywhere between 55.03 and 96.87, which is really a big range of possibility. This can be done for any value.  
+
+```{r}
+plot(Y ~ X, data = moon)
+curve(sqrt(b[1] + b[2]*x), add = TRUE)
+abline(h = sqrt(predict(moon.square, data.frame(X = 80), interval="confidence")), lty = 2, col = "firebrick")
+abline(h = sqrt(predict(moon.square, data.frame(X = 80), interval="prediction", lty = 2, col = "goldenrod")))
+
+pander(sqrt(predict(moon.square, data.frame(X = 80), interval="confidence")))
+pander(sqrt(predict(moon.square, data.frame(X = 80), interval="prediction")))
+```
+
+I hope that this was informative and that it helped you figure out that homework scores is a useful explanatory variable when it comes to test scores. It's not perfect though as some people are good at taking tests while others are not. They could be doing well in terms of other class work, but they may bomb that test that they take. There are always going to be those outliers that might throw off the data, but that is just a part of life. 
+
+<footer>
+</footer>
+
+
+
+ 
+ <style>
+ #points {
+  font-size:.8em;
+  padding-left:5px;
+  font-weight:bold; 
+  color:#317eac;
+}
+
+#recpoints {
+  font-size:.8em;
+  padding-left:5px;
+  font-weight:bold; 
+  color:#7eac31;
+}
+
+#rrecpoints {
+  font-size:1em;
+  padding-left:5px;
+  font-weight:bold; 
+  color:#7eac31;
+}
+
+#report {
+  font-size:.7em;
+  padding-left:15px;
+  font-weight:normal; 
+  color:#5a5a5a;
+}
+
+#datalink {
+  font-size:.5em;
+  color:#317eac;
+  padding-left:5px;
+}
+
+#headnote {
+  font-size:.6em;
+  color:#787878;
+}
+
+#note {
+  font-size:.8em;
+  color:#787878;
+}
+
+#headpoints {
+ font-size:12pt;
+ color: #585858; 
+ padding-left: 15px;
+}
+ </style>
+
+ 
+
+ 
+
+ 
